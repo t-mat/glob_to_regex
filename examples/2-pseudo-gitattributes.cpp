@@ -1,4 +1,4 @@
-// Process pseudo gitignore (myConfig).  For C++17.  Very slow.
+// Process pseudo gitattributes (myConfig).  For C++17.  Very slow.
 #include <map>
 #include <sstream>
 #include <stdio.h>
