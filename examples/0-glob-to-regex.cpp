@@ -19,6 +19,4 @@ int main() {
         const bool b = std::regex_match(s, r);
         printf("'%s' %-13s '%s'\n", globPattern.c_str(), b ? "matches" : "doesn't match", s.c_str());
     }
-
-    return 0;
 }
