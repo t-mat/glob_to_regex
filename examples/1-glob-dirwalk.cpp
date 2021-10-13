@@ -27,6 +27,7 @@ int main(int argc, const char** argv) {
 #endif
     const bool followSimlink = true;
 
+    // Find all .txt file under $HOME (%USERPROFILE% on Windows) recursively.
     std::filesystem::path globPattern = home + "/**/*.txt";
     printf("globPattern=%s\n", (const char*) globPattern.generic_u8string().c_str());
 
