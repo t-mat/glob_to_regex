@@ -4,3 +4,4 @@ test-0
 
 0-glob-to-regex
 1-glob-dirwalk
+2-pseudo-gitattributes
