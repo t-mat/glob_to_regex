@@ -1,4 +1,4 @@
-.PHONY: default all clean test-all test-0 0-glob-to-regex 1-glob-dirwalk 2-pseudo-gitattributes
+.PHONY: default all clean test-all test-0 0-glob-to-regex 1-glob-dirwalk 2-glob-rules
 
 default: all
 
@@ -14,7 +14,7 @@ clean:
 	$(RM) examples/*.o
 	$(RM) 0-glob-to-regex
 	$(RM) 1-glob-dirwalk
-	$(RM) 2-pseudo-gitattributes
+	$(RM) 2-glob-rules
 
 test-all: test-0
 	echo test-0          && ./test-0
@@ -22,10 +22,10 @@ test-all: test-0
 test-0: tests/test-0.o
 	$(CXX) -o $@ $^
 
-example-all: 0-glob-to-regex 1-glob-dirwalk 2-pseudo-gitattributes
+example-all: 0-glob-to-regex 1-glob-dirwalk 2-glob-rules
 	echo 0-glob-to-regex && ./0-glob-to-regex
 	echo 1-glob-dirwalk  && ./1-glob-dirwalk
-	echo 2-pseudo-gitattributes && ./2-pseudo-gitattributes
+	echo 2-glob-rules && ./2-glob-rules
 
 0-glob-to-regex: examples/0-glob-to-regex.o
 	$(CXX) -o $@ $^
@@ -33,5 +33,5 @@ example-all: 0-glob-to-regex 1-glob-dirwalk 2-pseudo-gitattributes
 1-glob-dirwalk: examples/1-glob-dirwalk.o
 	$(CXX) -o $@ $^
 
-2-pseudo-gitattributes: examples/2-pseudo-gitattributes.o
+2-glob-rules: examples/2-glob-rules.o
 	$(CXX) -o $@ $^
