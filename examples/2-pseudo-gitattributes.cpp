@@ -37,7 +37,7 @@ tests/*.cpp eol=lf
 )";
 
 
-static std::vector<std::string> splitLine(const std::string& line) {
+static std::vector<std::string> splitLine(const char* line) {
     std::vector<std::string> elements;
 
     const auto isBlank = [](int x) -> bool { return x == '\t' || x == ' '; };
@@ -49,27 +49,28 @@ static std::vector<std::string> splitLine(const std::string& line) {
     std::string t;
     bool escape = false;
     for(int p = 0; line[p]; ++p) {
+        const char c = line[p];
         if(escape) {
-            t.push_back(line[p]);
+            t.push_back(c);
             escape = false;
             continue;
         }
-        if(isEscape(line[p])) {
+        if(isEscape(c)) {
             escape = true;
             continue;
         }
-        if(isEol(line[p])) {
+        if(isEol(c)) {
             break;
         }
         if(s == State::SkipBlank) {
-            if(isBlank(line[p])) {
+            if(isBlank(c)) {
                 continue;
             }
-            t.push_back(line[p]);
+            t.push_back(c);
             s = State::InString;
         } else {
-            if(! isBlank(line[p])) {
-                t.push_back(line[p]);
+            if(! isBlank(c)) {
+                t.push_back(c);
                 continue;
             }
             elements.push_back(t);
@@ -88,7 +89,7 @@ static Config readConfigStream(std::istream& istr) {
     Config config;
     std::string line;
     while(std::getline(istr, line)) {
-        std::vector<std::string> elements = splitLine(line);
+        std::vector<std::string> elements = splitLine(line.c_str());
         if(! elements.empty()) {
             config.push_back(elements);
         }
@@ -106,76 +107,60 @@ static void procConfig(
 ) {
     const Path basePath = Fs::weakly_canonical(basePath_);
 
+    std::regex::flag_type regexFlags = std::regex::ECMAScript;
+    if(! caseSensitivity) {
+        regexFlags |= std::regex::icase;
+    }
+
+    std::filesystem::directory_options directoryOptions = std::filesystem::directory_options::skip_permission_denied;
+    if(followSimlink) {
+        directoryOptions |= std::filesystem::directory_options::follow_directory_symlink;
+    }
+
     struct Rule {
         int         index;
-        std::string pattern;
+        std::string globPattern;
     };
 
     std::vector<Rule> rules;
     for(int i = 0; i < (int) config.size(); ++i) {
-        Rule rule;
-        rule.index      = i;
-        rule.pattern    = config[i][0];
-        rules.push_back(rule);
-    }
-
-    std::map<const Rule*, std::vector<Path>> rulePathMap;
-
-    for(const Rule& rule : rules) {
-        Path rp;
-        if(rule.pattern.find('/') != std::string::npos) {
-            if(rule.pattern[0] == '/') {
+        std::string pattern = config[i][0];
+        if(pattern.find('/') != std::string::npos) {
+            if(pattern[0] == '/') {
                 // "/*.txt" -> "*.txt"
-                rp = basePath / &rule.pattern[1];
-            } else {
-                rp = basePath / rule.pattern;
+                pattern = &pattern[1];
             }
         } else {
             // "*.txt" -> "**/*.txt"
-            rp = basePath / "**" / rule.pattern;
+            pattern = std::string("**/") + pattern;
         }
-        std::vector<Path> paths;
-        GlobToRegex::dirWalk(
-              caseSensitivity
-            , followSimlink
-            , rp
-            , [&](const Path& path) -> bool {
-                paths.push_back(path);
-                return true;
-            }
-        );
-        for(const Path& path : paths) {
-            const Path cp = Fs::weakly_canonical(path);
-            rulePathMap[&rule].push_back(cp);
-        }
+
+        Rule rule;
+        rule.index          = i;
+        rule.globPattern    = pattern;
+        rules.push_back(rule);
     }
 
-    for(const Fs::directory_entry& e : Fs::recursive_directory_iterator(basePath)) {
-        const Path path = Fs::weakly_canonical(e.path());
-        if(! Fs::is_regular_file(path)) {
+    const auto isMatch = [&](const Rule& rule, const Path& path) -> bool {
+        const Path relPath = Fs::relative(path, basePath);
+        const std::string relPathStr = relPath.generic_u8string().c_str();
+        const std::string regexStr = GlobToRegex::translateGlobPatternToRegex(rule.globPattern);
+        const std::regex r = std::regex(regexStr, regexFlags);
+        const bool b = std::regex_match(relPathStr, r);
+        return b;
+    };
+
+    for(const Fs::directory_entry& e : Fs::recursive_directory_iterator(basePath, directoryOptions)) {
+        if(! e.is_regular_file()) {
             continue;
         }
-        const Rule* lastMatchedRule = nullptr;
-        for(const Rule& rule : rules) {
-            const Rule* pRule = &rule;
-            bool match = false;
-            for(const Path& rp : rulePathMap[pRule]) {
-                if(rp.compare(path) == 0) {
-                    match = true;
-                    break;
-                }
-            }
-            if(match) {
-                lastMatchedRule = pRule;
+        int lastMatchedRuleIndex = -1;
+        for(int i = 0; i < (int) rules.size(); ++i) {
+            if(isMatch(rules[i], e.path())) {
+                lastMatchedRuleIndex = i;
             }
         }
-
-        const Path relPath = Fs::relative(path, basePath);
-        if(lastMatchedRule) {
-            setPathPatternIndex(relPath, lastMatchedRule->index);
-        } else {
-            setPathPatternIndex(relPath, -1);
-        }
+        setPathPatternIndex(e, lastMatchedRuleIndex);
     }
 }
 
@@ -208,7 +193,8 @@ int main() {
     const auto basePath = Path(".");
 
     const auto setPathPatternIndex = [&](const Path& path, int index) {
-        printf("%-48s", (const char*) path.generic_u8string().c_str());
+        const Path relPath = Fs::relative(path, Fs::weakly_canonical(basePath));
+        printf("%-48s", (const char*) relPath.generic_u8string().c_str());
 
         if(index < 0) {
             printf(", no rules\n");
