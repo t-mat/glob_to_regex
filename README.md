@@ -23,20 +23,12 @@ int main() {
     const std::string globPattern = "?at";
 
     const std::string regexStr = GlobToRegex::translateGlobPatternToRegex(globPattern);
-    if(regexStr.empty()) {
-        printf("error\n");
-        exit(EXIT_FAILURE);
-    }
-
-    const std::regex::flag_type regexFlags = std::regex::ECMAScript;
-    const std::regex r = std::regex(regexStr, regexFlags);
+    const std::regex r = std::regex(regexStr, std::regex::ECMAScript);
 
     for(const auto& s : specimens) {
         const bool b = std::regex_match(s, r);
         printf("'%s' %-13s '%s'\n", globPattern.c_str(), b ? "matches" : "doesn't match", s.c_str());
     }
-
-    return 0;
 }
 ```
 
