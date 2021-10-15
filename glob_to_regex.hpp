@@ -60,20 +60,18 @@
 #ifndef glob_to_regex_hpp_included
 #define glob_to_regex_hpp_included
 
-#include <tuple>
 #include <string>
 #include <regex>
-#include <functional>
 
 namespace GlobToRegex {
     enum class GlobToRegexErrc : int {
         Ok              = 0,
         Empty           = -1,
         BadTerm         = -2,
-        BadPathChar     = -3,
-        BadEscape       = -4,
-        BadDoubleStar   = -5,
-        BadBracket      = -6,
+        BadEscape       = -3,
+        BadDoubleStar   = -4,
+        BadBracket      = -5,
+        BadBasePath     = -6,
     };
 
     inline bool any(GlobToRegexErrc e) {
@@ -89,13 +87,6 @@ namespace GlobToRegex {
                 }
             }
             return false;
-        }
-
-        inline bool isBadPathChar(int c) {
-            return (c < 0)
-                || (c >= 0 && c < 32)                       // control char
-                || (c == 0x7f)                              // del
-                || (c == '|') || (c == '<') || (c == '>');  // pipe chars
         }
 
         inline bool isBadEscapeChar(int c) {
@@ -121,21 +112,17 @@ namespace GlobToRegex {
             return error(GlobToRegexErrc::Empty);
         }
 
-        const int n = static_cast<int>(globPattern.size());
-        int i = 0;
-        for(;;) {
-            const int errorChar = -256;
+        const auto n = static_cast<int>(globPattern.size());
+        for(int i = 0; i < n; ) {
+            const int eolChar = -256;
 
             const auto putRawChar = [&](int c) {
-                if(c < 0) {
-                    return;
-                }
                 result += static_cast<char>(c);
             };
 
             const auto putRawStr = [&](const char* s) {
                 while(*s) {
-                    putRawChar(static_cast<uint8_t>(*s++));
+                    putRawChar(*s++);
                 }
             };
 
@@ -148,62 +135,44 @@ namespace GlobToRegex {
                 }
             };
 
-            const auto hasNextChar = [&]() -> bool {
-                return i < n;
-            };
-
             const auto advance = [&]() {
                 ++i;
             };
 
             const auto peekNextChar = [&]() -> int {
-                if(! hasNextChar()) {
-                    return errorChar;
+                if(i < n) {
+                    return static_cast<uint8_t>(globPattern[i]);
                 }
-                return globPattern[i];
+                return eolChar;
             };
 
             const auto getNextChar = [&]() -> int {
-                if(! hasNextChar()) {
-                    return errorChar;
+                const int x = peekNextChar();
+                if(x != eolChar) {
+                    advance();
                 }
-                const auto x = peekNextChar();
-                advance();
                 return x;
             };
 
-            const auto c0 = getNextChar();
-            if(c0 == errorChar) {
+            const int c0 = getNextChar();
+            if(c0 == eolChar) {
                 break;
             }
 
-            const auto c1 = peekNextChar();
+            const int c1 = peekNextChar();
 
             if(c0 == '\\') {
                 if(isBadEscapeChar(c1)) {
                     return error(GlobToRegexErrc::BadEscape);
                 }
-                if(isBadPathChar(c1)) {
-                    return error(GlobToRegexErrc::BadPathChar);
-                }
                 advance();
-                putCharWithRegexEscape(static_cast<uint8_t>(c1));
+                putCharWithRegexEscape(c1);
                 continue;
             }
 
-            if(c0 == '*' && c1 == '*') { // "**"
-                advance();
-                const auto ei = getNextChar();
-                if(ei == errorChar) {       // '*', '*', nul
-                    putRawStr(".*");        // '*', '*', nul matches everything including '/'.
-                    break;
-                }
-                if(ei != '/') {             // '*', '*', not('/')
-                    // '*', '*', not('/') is invalid glob pattern.
-                    return error(GlobToRegexErrc::BadDoubleStar);
-                }
-                // '*', '*', '/' matches any times (including 0 times) of directory names.
-                putRawStr("([^/]+/)*");
+            if(c0 == '?') {
+                // '?' matches any character except '/'.
+                putRawStr("[^/]");
                 continue;
             }
 
@@ -213,60 +182,57 @@ namespace GlobToRegex {
                 continue;
             }
 
-            if(c0 == '?') {
-                // '?' matches any characters except '/'.
-                putRawStr("[^/]");
+            if(c0 == '*' && c1 == '*') {
+                advance();
+                const int c2 = getNextChar();
+                if(c2 == eolChar) {
+                    // '*', '*', EOL matches everything including '/'.
+                    putRawStr(".*");
+                    break;
+                }
+                if(c2 != '/') {             // '*', '*', not('/')
+                    // '*', '*', not('/') is invalid glob pattern.
+                    return error(GlobToRegexErrc::BadDoubleStar);
+                }
+                // '*', '*', '/' matches any times (including 0 times) of directory names.
+                putRawStr("([^/]+/)*");
                 continue;
             }
 
             if(c0 == '[') {
+                // '[', ... , ']'
                 putRawChar('[');
-                for(int idx = 0; ; ++idx) {
+                if(c1 == '!') {
+                    putRawChar('^');
+                    advance();
+                }
+                for(;;) {
                     const int d = getNextChar();
-                    if(d == errorChar) {
+                    if(d == eolChar) {
                         return error(GlobToRegexErrc::BadBracket);
                     }
                     if(d == ']') {
                         break;
                     }
+                    if(d == '-') {
+                        putRawChar('-');
+                        continue;
+                    }
                     if(d == '\\') {
-                        const int e = peekNextChar();
+                        const int e = getNextChar();
                         if(isBadEscapeChar(e)) {
                             return error(GlobToRegexErrc::BadEscape);
                         }
-                        if(isBadPathChar(e)) {
-                            return error(GlobToRegexErrc::BadPathChar);
-                        }
-                        advance();
-                        putCharWithRegexEscape(static_cast<uint8_t>(e));
+                        putCharWithRegexEscape(e);
                         continue;
                     }
-                    if(idx == 0 && d == '!') {
-                        putRawChar(static_cast<uint8_t>('^'));
-                        continue;
-                    }
-                    if(d == '-') {
-                        putRawChar(static_cast<uint8_t>('-'));
-                        continue;
-                    }
-                    if(isBadPathChar(d)) {
-                        return error(GlobToRegexErrc::BadPathChar);
-                    }
-                    if(isSpecialRegexChar(d)) {
-                        putCharWithRegexEscape(static_cast<uint8_t>('\\'));
-                        putCharWithRegexEscape(static_cast<uint8_t>(d));
-                        continue;
-                    }
-                    putCharWithRegexEscape(static_cast<uint8_t>(d));
+                    putCharWithRegexEscape(d);
                 }
-                putRawChar(static_cast<uint8_t>(']'));
+                putRawChar(']');
                 continue;
             }
 
-            if(isBadPathChar(c0)) {
-                return error(GlobToRegexErrc::BadPathChar);
-            }
-            putCharWithRegexEscape(static_cast<uint8_t>(c0));
+            putCharWithRegexEscape(c0);
         }
 
         outputErrorCode = GlobToRegexErrc::Ok;
@@ -283,6 +249,7 @@ namespace GlobToRegex {
 // dirWalk
 #if (__cplusplus >= 201703L) && __has_include(<filesystem>)
 #include <filesystem>
+#include <functional>
 
 namespace GlobToRegex {
     inline GlobToRegexErrc dirWalk_(
@@ -345,7 +312,7 @@ namespace GlobToRegex {
         const auto basePath = findBasePath(globPatternPath);
         const auto globPath = std::filesystem::relative(globPatternPath, basePath);
         if(! std::filesystem::exists(basePath)) {
-            return GlobToRegexErrc::Ok;
+            return GlobToRegexErrc::BadBasePath;
         }
 
         const auto& match = [&](const std::filesystem::path& path) -> bool {
