@@ -1,3 +1,9 @@
+// Directory traversal with glob pattern matching (C++17)
+//
+// gcc  : g++     -std=c++17 -I .. 1-glob-dirwalk.cpp && ./a.out
+// clang: clang++ -std=c++17 -I .. 1-glob-dirwalk.cpp && ./a.out
+// MSVC : cl.exe /std:c++17 /Zc:__cplusplus /EHsc /I .. 1-glob-dirwalk.cpp && .\1-glob-dirwalk.exe
+
 #include <stdio.h>
 #include "glob_to_regex.hpp"
 
@@ -20,7 +26,11 @@ struct Win32CodePageUtf8 {
 int main(int argc, const char** argv) {
 #if _WIN32
     const bool caseSensitivity = false;
-    const auto home = std::string(getenv_("USERPROFILE"));
+    char* str = nullptr;
+    size_t len = 0;
+    _dupenv_s(&str, &len, "USERPROFILE");
+    const auto home = std::string(str);
+    free(str);
 #else
     const bool caseSensitivity = true;
     const auto home = std::string(getenv("HOME"));
