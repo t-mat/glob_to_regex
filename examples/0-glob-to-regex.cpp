@@ -1,3 +1,9 @@
+// String matching test with glob patterns (C++11)
+//
+// gcc  : g++     -std=c++11 -I .. 0-glob-to-regex.cpp && ./a.out
+// clang: clang++ -std=c++11 -I .. 0-glob-to-regex.cpp && ./a.out
+// MSVC : cl.exe /I .. 0-glob-to-regex.cpp && .\0-glob-to-regex.exe
+
 #include <stdio.h>
 #include "glob_to_regex.hpp"
 
@@ -6,8 +12,9 @@ int main() {
 
     const std::string globPattern = "?at";
 
-    const std::string regexStr = GlobToRegex::translateGlobPatternToRegex(globPattern);
-    if(regexStr.empty()) {
+    GlobToRegex::GlobToRegexErrc error;
+    const std::string regexStr = GlobToRegex::translateGlobPatternToRegex(globPattern, error);
+    if(GlobToRegex::any(error)) {
         printf("error\n");
         exit(EXIT_FAILURE);
     }
