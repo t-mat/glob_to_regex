@@ -42,28 +42,32 @@ int main() {
 int main(int argc, const char** argv) {
 #if _WIN32
     const bool caseSensitivity = false;
-    const auto home = std::string(getenv_("USERPROFILE"));
+    char* str = nullptr;
+    size_t len = 0;
+    _dupenv_s(&str, &len, "USERPROFILE");
+    const auto home = std::string(str);
+    free(str);
 #else
     const bool caseSensitivity = true;
     const auto home = std::string(getenv("HOME"));
 #endif
     const bool followSimlink = true;
 
+    // Find all .txt file under $HOME (%USERPROFILE% on Windows) recursively.
     std::filesystem::path globPattern = home + "/**/*.txt";
-    printf("globPattern=%s\n", (const char*) globPattern.generic_u8string().c_str());
+    printf("globPattern=%s\n", globPattern.c_str());
 
     GlobToRegex::dirWalk(
           caseSensitivity
         , followSimlink
         , globPattern.generic_u8string().c_str()
         , [&](const std::filesystem::path& path) -> bool {
-            printf("  %s\n", (const char*) path.generic_u8string().c_str());
+            printf("  %s\n", path.c_str());
             return true;
         }
     );
 }
 ```
-
 
 
 ## .gitattributes like glob pattern matching rules (C++17)
@@ -105,3 +109,8 @@ int main() {
     }
 }
 ```
+
+
+## Visual C++
+
+- If you want to use `GlobToRegex::dirWalk()` (C++17), please set [`/Zc:__cplusplus`](https://docs.microsoft.com/en-us/cpp/build/reference/zc-cplusplus) compiler option.
