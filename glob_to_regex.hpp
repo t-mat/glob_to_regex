@@ -8,51 +8,6 @@
 //      - **
 //      - [a-z], [!a-z]
 //
-//
-//  Usage (C++11, string matching test with glob patterns):
-//      std::vector<std::string> specimens = { "bat", "cat", "tab", "tac", };
-//
-//      std::string globPattern = "?at";
-//
-//      const std::string regexStr = GlobToRegex::translateGlobPatternToRegex(globPattern);
-//      if(regexStr.empty()) {
-//          printf("error\n");
-//          exit(EXIT_FAILURE);
-//      }
-//
-//      const std::regex::flag_type regexFlags = std::regex::ECMAScript;
-//  //  const std::regex::flag_type regexFlags = std::regex::ECMAScript | std::regex::icase; // for case insensitive filesystems
-//      const std::regex r = std::regex(regexStr, regexFlags);
-//
-//      for(const auto& s : specimens) {
-//          const bool b = std::regex_match(s, r);
-//          printf("'%s' %-13s '%s'\n", globPattern.c_str(), b ? "matches" : "doesn't match", s.c_str());
-//      }
-//
-//
-//  Usage (C++17, directory traversal with glob pattern matching):
-//      const bool caseSensitivity = true;
-//      const bool followSimlink = true;
-//
-//      const auto home = [&]() -> std::string {
-//          const char* s = getenv("HOME");
-//          return std::string(s ? s : ".");
-//      }();
-//
-//      std::filesystem::path globPattern = home + "/**/*.txt";
-//      printf("globPattern=%s\n", (const char*) globPattern.generic_u8string().c_str());
-//
-//      GlobToRegex::dirWalk(
-//            caseSensitivity
-//          , followSimlink
-//          , globPattern
-//          , [&](const std::filesystem::path& path) -> bool {
-//              printf("  %s\n", (const char*) path.generic_u8string().c_str());
-//              return true;
-//          }
-//      );
-//
-//
 // License
 //      SPDX-FileCopyrightText: Copyright (c) Takayuki Matsuoka
 //      SPDX-License-Identifier: CC0-1.0
@@ -71,7 +26,6 @@ namespace GlobToRegex {
         BadEscape       = -3,
         BadDoubleStar   = -4,
         BadBracket      = -5,
-        BadBasePath     = -6,
     };
 
     inline bool any(GlobToRegexErrc e) {
@@ -100,7 +54,10 @@ namespace GlobToRegex {
         }
     }
 
-    inline std::string translateGlobPatternToRegex(const std::string& globPattern, GlobToRegexErrc& outputErrorCode) {
+    inline std::string translateGlobPatternToRegex(
+          const std::string& globPattern
+        , GlobToRegexErrc& outputErrorCode
+    ) {
         std::string result = "";
 
         const auto error = [&](GlobToRegexErrc errorCode) -> std::string {
@@ -258,69 +215,42 @@ namespace GlobToRegex {
         , const std::filesystem::path& globPatternPath
         , const std::function<bool(const std::filesystem::path&)> callback
     ) {
-        std::regex rgx;
+        // Move to parent while basePath contains any special glob character.
+        std::filesystem::path basePath = globPatternPath;
+        while(! basePath.empty()) {
+            const auto basePathStr = basePath.generic_u8string();
+            const auto b = [&basePathStr]() -> bool {
+                for(const auto c : basePathStr) {
+                    if(c == '*' || c == '?' || c == '[' || c == ']') {
+                        return true;
+                    }
+                }
+                return false;
+            }();
+            if(!b) {
+                break;
+            }
+            basePath = basePath.parent_path();
+        }
 
+        std::regex rgx;
         {
-            const auto s = globPatternPath.generic_u8string();
-            const auto* p = (const char*) s.c_str();
+            const std::string s = globPatternPath.generic_u8string();
             GlobToRegexErrc error;
-            const std::string regexStr = translateGlobPatternToRegex(p, error);
+            const std::string regexStr = translateGlobPatternToRegex(s, error);
             if(any(error)) {
                 return error;
             }
             rgx = std::regex(regexStr, regexFlags);
         }
 
-        const auto containsSpecialRecursiveGlobChar = [](const std::filesystem::path& path) -> bool {
-            const auto s = path.generic_u8string();
-            const char* p = (const char*) s.c_str();
-            while(*p) {
-                const auto c = *p++;
-                if(c == '*' && *p == '*') {
-                    return true;
-                }
-            }
-            return false;
-        };
-
-        // Move to parent while path contains any special glob character.
-        const auto findBasePath = [&](const std::filesystem::path& path) -> std::filesystem::path {
-            const auto containsSpecialGlobChar = [](const std::filesystem::path& path) -> bool {
-                const auto s = path.generic_u8string();
-                const char* p = (const char*) s.c_str();
-                while(*p) {
-                    const auto c = *p++;
-                    if(c == '*' || c == '?' || c == '[' || c == ']') {
-                        return true;
-                    }
-                }
-                return false;
-            };
-
-            auto p = std::filesystem::path(path);
-            while(! p.empty()) {
-                if(! containsSpecialGlobChar(p)) {
-                    return p;
-                }
-                const auto parent = p.parent_path();
-                const auto filename = p.filename();
-                p = parent;
-            }
-            return p;
-        };
-
-        const auto basePath = findBasePath(globPatternPath);
-        const auto globPath = std::filesystem::relative(globPatternPath, basePath);
-        if(! std::filesystem::exists(basePath)) {
-            return GlobToRegexErrc::BadBasePath;
-        }
-
         const auto& match = [&](const std::filesystem::path& path) -> bool {
-            const std::filesystem::path p2 = std::filesystem::weakly_canonical(path);
-            return std::regex_match((const char*) p2.generic_u8string().c_str(), rgx);
+            const std::string pathStr = path.generic_u8string();
+            return std::regex_match(pathStr, rgx);
         };
 
-        if(containsSpecialRecursiveGlobChar(globPath)) {
+        const bool recursive = (std::string::npos != globPatternPath.generic_u8string().find("**"));
+        if(recursive) {
             // Recursive
             for(const auto& e : std::filesystem::recursive_directory_iterator(basePath, directoryOptions)) {
                 const std::filesystem::path path = e.path();
@@ -334,7 +264,7 @@ namespace GlobToRegex {
             // Non recursive
             for(const auto& e : std::filesystem::directory_iterator(basePath, directoryOptions)) {
                 const std::filesystem::path path = e.path();
-                if(match(e.path())) {
+                if(match(path)) {
                     if(! callback(path)) {
                         break;
                     }
@@ -350,12 +280,12 @@ namespace GlobToRegex {
         , const std::filesystem::path& globPatternPath
         , const std::function<bool(const std::filesystem::path&)> callback
     ) {
-        std::regex::flag_type regexFlags = std::regex::ECMAScript;
+        auto regexFlags = std::regex::ECMAScript;
         if(! caseSensitive) {
             regexFlags |= std::regex::icase;
         }
 
-        std::filesystem::directory_options directoryOptions = std::filesystem::directory_options::skip_permission_denied;
+        auto directoryOptions = std::filesystem::directory_options::skip_permission_denied;
         if(followSimlink) {
             directoryOptions |= std::filesystem::directory_options::follow_directory_symlink;
         }
