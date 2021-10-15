@@ -1,4 +1,7 @@
 *.o
+a.out
+*.obj
+*.exe
 
 test-0
 
