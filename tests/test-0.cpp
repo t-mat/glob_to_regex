@@ -1,5 +1,8 @@
-#include <iostream>
-#include <regex>
+// gcc  : g++     -std=c++11 -I .. test-0.cpp && ./a.out
+// clang: clang++ -std=c++11 -I .. test-0.cpp && ./a.out
+// MSVC : cl.exe /EHsc /I .. test-0.cpp && .\test-0.exe
+
+#include <stdio.h>
 #include "glob_to_regex.hpp"
 
 static int test0() {
