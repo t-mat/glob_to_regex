@@ -1,4 +1,9 @@
-// gitattributes like glob-to-attribute rules.  For C++17.  Very slow.
+// Multiple glob pattern matching.  For C++17.  Very slow.
+//
+// gcc  : g++     -std=c++17 -I .. 2-glob-rules.cpp && pushd .. && examples/a.out && popd
+// clang: clang++ -std=c++17 -I .. 2-glob-rules.cpp && pushd .. && examples/a.out && popd
+// MSVC : cl.exe /std:c++17 /Zc:__cplusplus /EHsc /I .. 2-glob-rules.cpp && pushd .. && examples\2-glob-rules.exe && popd
+
 #include <stdio.h>
 #include "glob_to_regex.hpp"
 
