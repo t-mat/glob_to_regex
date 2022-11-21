@@ -77,7 +77,7 @@ int main(int argc, const char** argv) {
 #include "glob_to_regex.hpp"
 
 int main() {
-    std::vector<std::vector<std::string>> rules = {
+    const std::vector<std::vector<std::string>> rules = {
         { "Makefile",       "Makefile (text)",      },
         { "*.cpp",          "C++ source code",      },
         { "tests/*.cpp",    "C++ source for test",  },  // later rule has higher priority
@@ -85,16 +85,21 @@ int main() {
         { "*.o",            "Object file",          },
     };
 
+    std::vector<std::regex> ruleRegexes;
+    for(const auto& rule : rules) {
+        std::string globPattern = std::string("**/") + rule[0];
+        const std::string regexStr = GlobToRegex::translateGlobPatternToRegex(globPattern);
+        ruleRegexes.push_back(std::regex(regexStr, std::regex::ECMAScript));
+    }
+
     for(const auto& de : std::filesystem::recursive_directory_iterator(".")) {
         if(! de.is_regular_file()) {
             continue;
         }
         const std::string pathStr = de.path().generic_u8string();
         int lastIndex = -1;
-        for(int i = 0; i < (int) rules.size(); ++i) {
-            std::string globPattern = std::string("**/") + rules[i][0];
-            const std::string regexStr = GlobToRegex::translateGlobPatternToRegex(globPattern);
-            const std::regex r = std::regex(regexStr, std::regex::ECMAScript);
+        for(int i = 0; i < (int) ruleRegexes.size(); ++i) {
+            const auto& r = ruleRegexes[i];
             if(std::regex_match(pathStr, r)) {
                 lastIndex = i;
             }
